@@ -37,15 +37,25 @@ func (s *LocalCacheChannelStore) handleClusterInvalidateChannelGuestCounts(msg *
 	}
 }
 
+func (s *LocalCacheChannelStore) handleClusterInvalidateChannelById(msg *model.ClusterMessage) {
+	if msg.Data == CLEAR_CACHE_MESSAGE_DATA {
+		s.rootStore.channelByIdCache.Purge()
+	} else {
+		s.rootStore.channelByIdCache.Remove(msg.Data)
+	}
+}
+
 func (s LocalCacheChannelStore) ClearCaches() {
 	s.rootStore.doClearCacheCluster(s.rootStore.channelMemberCountsCache)
 	s.rootStore.doClearCacheCluster(s.rootStore.channelPinnedPostCountsCache)
 	s.rootStore.doClearCacheCluster(s.rootStore.channelGuestCountCache)
+	s.rootStore.doClearCacheCluster(s.rootStore.channelByIdCache)
 	s.ChannelStore.ClearCaches()
 	if s.rootStore.metrics != nil {
 		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Channel Pinned Post Counts - Purge")
 		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Channel Member Counts - Purge")
 		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Channel Guest Count - Purge")
+		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Channel - Purge")
 	}
 }
 
@@ -67,6 +77,13 @@ func (s LocalCacheChannelStore) InvalidateGuestCount(channelId string) {
 	s.rootStore.doInvalidateCacheCluster(s.rootStore.channelGuestCountCache, channelId)
 	if s.rootStore.metrics != nil {
 		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Channel Guests Count - Remove by channelId")
+	}
+}
+
+func (s LocalCacheChannelStore) InvalidateChannel(channelId string) {
+	s.rootStore.doInvalidateCacheCluster(s.rootStore.channelByIdCache, channelId)
+	if s.rootStore.metrics != nil {
+		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Channel - Remove by ChannelId")
 	}
 }
 
@@ -131,4 +148,80 @@ func (s LocalCacheChannelStore) GetPinnedPostCount(channelId string, allowFromCa
 	}
 
 	return count, nil
+}
+
+func (s LocalCacheChannelStore) Get(id string, allowFromCache bool) (*model.Channel, *model.AppError) {
+
+	if allowFromCache {
+		if cacheItem := s.rootStore.doStandardReadCache(s.rootStore.channelByIdCache, id); cacheItem != nil {
+			ch := cacheItem.(*model.Channel).DeepCopy()
+			return ch, nil
+		}
+	}
+
+	ch, err := s.ChannelStore.Get(id, allowFromCache)
+
+	if allowFromCache && err == nil {
+		s.rootStore.doStandardAddToCache(s.rootStore.channelByIdCache, id, ch)
+	}
+
+	return ch, err
+}
+
+func (s LocalCacheChannelStore) SaveMember(member *model.ChannelMember) (*model.ChannelMember, *model.AppError) {
+	member, err := s.ChannelStore.SaveMember(member)
+	if err != nil {
+		return nil, err
+	}
+	s.InvalidateMemberCount(member.ChannelId)
+	return member, nil
+}
+
+func (s LocalCacheChannelStore) SaveMultipleMembers(members []*model.ChannelMember) ([]*model.ChannelMember, *model.AppError) {
+	members, err := s.ChannelStore.SaveMultipleMembers(members)
+	if err != nil {
+		return nil, err
+	}
+	for _, member := range members {
+		s.InvalidateMemberCount(member.ChannelId)
+	}
+	return members, nil
+}
+
+func (s LocalCacheChannelStore) UpdateMember(member *model.ChannelMember) (*model.ChannelMember, *model.AppError) {
+	member, err := s.ChannelStore.UpdateMember(member)
+	if err != nil {
+		return nil, err
+	}
+	s.InvalidateMemberCount(member.ChannelId)
+	return member, nil
+}
+
+func (s LocalCacheChannelStore) UpdateMultipleMembers(members []*model.ChannelMember) ([]*model.ChannelMember, *model.AppError) {
+	members, err := s.ChannelStore.UpdateMultipleMembers(members)
+	if err != nil {
+		return nil, err
+	}
+	for _, member := range members {
+		s.InvalidateMemberCount(member.ChannelId)
+	}
+	return members, nil
+}
+
+func (s LocalCacheChannelStore) RemoveMember(channelId, userId string) *model.AppError {
+	err := s.ChannelStore.RemoveMember(channelId, userId)
+	if err != nil {
+		return err
+	}
+	s.InvalidateMemberCount(channelId)
+	return nil
+}
+
+func (s LocalCacheChannelStore) RemoveMembers(channelId string, userIds []string) *model.AppError {
+	err := s.ChannelStore.RemoveMembers(channelId, userIds)
+	if err != nil {
+		return err
+	}
+	s.InvalidateMemberCount(channelId)
+	return nil
 }

@@ -4,8 +4,6 @@
 package localcachelayer
 
 import (
-	"net/http"
-
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/mattermost/mattermost-server/v5/store"
 )
@@ -23,20 +21,73 @@ func (s *LocalCacheUserStore) handleClusterInvalidateScheme(msg *model.ClusterMe
 	}
 }
 
-func (s LocalCacheUserStore) ClearCaches() {
-	s.rootStore.userProfileByIdsCache.Purge()
-
-	if s.rootStore.metrics != nil {
-		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Profile By Ids - Purge")
+func (s *LocalCacheUserStore) handleClusterInvalidateProfilesInChannel(msg *model.ClusterMessage) {
+	if msg.Data == CLEAR_CACHE_MESSAGE_DATA {
+		s.rootStore.profilesInChannelCache.Purge()
+	} else {
+		s.rootStore.profilesInChannelCache.Remove(msg.Data)
 	}
 }
 
-func (s LocalCacheUserStore) InvalidatProfileCacheForUser(userId string) {
+func (s LocalCacheUserStore) ClearCaches() {
+	s.rootStore.userProfileByIdsCache.Purge()
+	s.rootStore.profilesInChannelCache.Purge()
+
+	if s.rootStore.metrics != nil {
+		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Profile By Ids - Purge")
+		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Profiles in Channel - Purge")
+	}
+}
+
+func (s LocalCacheUserStore) InvalidateProfileCacheForUser(userId string) {
 	s.rootStore.doInvalidateCacheCluster(s.rootStore.userProfileByIdsCache, userId)
 
 	if s.rootStore.metrics != nil {
 		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Profile By Ids - Remove")
 	}
+}
+
+func (s LocalCacheUserStore) InvalidateProfilesInChannelCacheByUser(userId string) {
+	keys := s.rootStore.profilesInChannelCache.Keys()
+
+	for _, key := range keys {
+		if cacheItem, ok := s.rootStore.profilesInChannelCache.Get(key); ok {
+			userMap := cacheItem.(map[string]*model.User)
+			if _, userInCache := userMap[userId]; userInCache {
+				s.rootStore.doInvalidateCacheCluster(s.rootStore.profilesInChannelCache, key)
+				if s.rootStore.metrics != nil {
+					s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Profiles in Channel - Remove by User")
+				}
+			}
+		}
+	}
+}
+
+func (s LocalCacheUserStore) InvalidateProfilesInChannelCache(channelId string) {
+	s.rootStore.doInvalidateCacheCluster(s.rootStore.profilesInChannelCache, channelId)
+	if s.rootStore.metrics != nil {
+		s.rootStore.metrics.IncrementMemCacheInvalidationCounter("Profiles in Channel - Remove by Channel")
+	}
+}
+
+func (s LocalCacheUserStore) GetAllProfilesInChannel(channelId string, allowFromCache bool) (map[string]*model.User, *model.AppError) {
+	if allowFromCache {
+		if cacheItem := s.rootStore.doStandardReadCache(s.rootStore.profilesInChannelCache, channelId); cacheItem != nil {
+			cachedMap := cacheItem.(map[string]*model.User)
+			return deepCopyUserMap(cachedMap), nil
+		}
+	}
+
+	userMap, err := s.UserStore.GetAllProfilesInChannel(channelId, allowFromCache)
+	if err != nil {
+		return nil, err
+	}
+
+	if allowFromCache {
+		s.rootStore.doStandardAddToCache(s.rootStore.profilesInChannelCache, channelId, deepCopyUserMap(userMap))
+	}
+
+	return userMap, nil
 }
 
 func (s LocalCacheUserStore) GetProfileByIds(userIds []string, options *store.UserGetByIdsOpts, allowFromCache bool) ([]*model.User, *model.AppError) {
@@ -53,11 +104,9 @@ func (s LocalCacheUserStore) GetProfileByIds(userIds []string, options *store.Us
 
 	for _, userId := range userIds {
 		if cacheItem := s.rootStore.doStandardReadCache(s.rootStore.userProfileByIdsCache, userId); cacheItem != nil {
-			u := &model.User{}
-			*u = *cacheItem.(*model.User)
-
+			u := cacheItem.(*model.User)
 			if options.Since == 0 || u.UpdateAt > options.Since {
-				users = append(users, u)
+				users = append(users, u.DeepCopy())
 			}
 		} else {
 			remainingUserIds = append(remainingUserIds, userId)
@@ -72,16 +121,48 @@ func (s LocalCacheUserStore) GetProfileByIds(userIds []string, options *store.Us
 	if len(remainingUserIds) > 0 {
 		remainingUsers, err := s.UserStore.GetProfileByIds(remainingUserIds, options, false)
 		if err != nil {
-			return nil, model.NewAppError("SqlUserStore.GetProfileByIds", "store.sql_user.get_profiles.app_error", nil, err.Error(), http.StatusInternalServerError)
+			return nil, err
 		}
-
-		users = append(users, remainingUsers...)
-
 		for _, user := range remainingUsers {
 			s.rootStore.doStandardAddToCache(s.rootStore.userProfileByIdsCache, user.Id, user)
+			users = append(users, user.DeepCopy())
 		}
-
 	}
 
 	return users, nil
+}
+
+// Get is a cache wrapper around the SqlStore method to get a user profile by id.
+// It checks if the user entry is present in the cache, returning the entry from cache
+// if it is present. Otherwise, it fetches the entry from the store and stores it in the
+// cache.
+func (s LocalCacheUserStore) Get(id string) (*model.User, *model.AppError) {
+	cacheItem := s.rootStore.doStandardReadCache(s.rootStore.userProfileByIdsCache, id)
+	if cacheItem != nil {
+		if s.rootStore.metrics != nil {
+			s.rootStore.metrics.AddMemCacheHitCounter("Profile By Id", float64(1))
+		}
+		u := cacheItem.(*model.User)
+		return u.DeepCopy(), nil
+	}
+	if s.rootStore.metrics != nil {
+		s.rootStore.metrics.AddMemCacheMissCounter("Profile By Id", float64(1))
+	}
+	user, err := s.UserStore.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	u := user.DeepCopy()
+	s.rootStore.doStandardAddToCache(s.rootStore.userProfileByIdsCache, id, u)
+	return user.DeepCopy(), nil
+}
+
+func deepCopyUserMap(users map[string]*model.User) map[string]*model.User {
+	copyOfUsers := make(map[string]*model.User)
+
+	for id, user := range users {
+		copyOfUsers[id] = user.DeepCopy()
+	}
+
+	return copyOfUsers
 }

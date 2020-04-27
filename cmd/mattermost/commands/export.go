@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mattermost/mattermost-server/v5/audit"
 	"github.com/mattermost/mattermost-server/v5/model"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -117,7 +118,7 @@ func scheduleExportCmdF(command *cobra.Command, args []string) error {
 		return errors.New("timeoutSeconds must be a positive integer")
 	}
 
-	if messageExportI := a.MessageExport; messageExportI != nil {
+	if messageExportI := a.MessageExport(); messageExportI != nil {
 		ctx := context.Background()
 		if timeoutSeconds > 0 {
 			var cancel context.CancelFunc
@@ -130,9 +131,13 @@ func scheduleExportCmdF(command *cobra.Command, args []string) error {
 			CommandPrintErrorln("ERROR: Message export job failed. Please check the server logs")
 		} else {
 			CommandPrettyPrintln("SUCCESS: Message export job complete")
+
+			auditRec := a.MakeAuditRecord("scheduleExport", audit.Success)
+			auditRec.AddMeta("format", format)
+			auditRec.AddMeta("start", startTime)
+			a.LogAuditRec(auditRec, nil)
 		}
 	}
-
 	return nil
 }
 
@@ -152,15 +157,20 @@ func buildExportCmdF(format string) func(command *cobra.Command, args []string) 
 			return errors.New("exportFrom must be a positive integer")
 		}
 
-		if a.MessageExport == nil {
-			CommandPrettyPrintln("MessageExport feature not available")
+		if a.MessageExport() == nil {
+			return errors.New("message export feature not available")
 		}
 
-		err2 := a.MessageExport.RunExport(format, startTime)
+		err2 := a.MessageExport().RunExport(format, startTime)
 		if err2 != nil {
 			return err2
 		}
 		CommandPrettyPrintln("SUCCESS: Your data was exported.")
+
+		auditRec := a.MakeAuditRecord("buildExport", audit.Success)
+		auditRec.AddMeta("format", format)
+		auditRec.AddMeta("start", startTime)
+		a.LogAuditRec(auditRec, nil)
 
 		return nil
 	}
@@ -198,6 +208,11 @@ func bulkExportCmdF(command *cobra.Command, args []string) error {
 		CommandPrintErrorln(err.Error())
 		return err
 	}
+
+	auditRec := a.MakeAuditRecord("bulkExport", audit.Success)
+	auditRec.AddMeta("all_teams", allTeams)
+	auditRec.AddMeta("file", args[0])
+	a.LogAuditRec(auditRec, nil)
 
 	return nil
 }

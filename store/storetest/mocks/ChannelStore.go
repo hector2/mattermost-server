@@ -132,6 +132,29 @@ func (_m *ChannelStore) ClearCaches() {
 	_m.Called()
 }
 
+// CountPostsAfter provides a mock function with given fields: channelId, timestamp, userId
+func (_m *ChannelStore) CountPostsAfter(channelId string, timestamp int64, userId string) (int, *model.AppError) {
+	ret := _m.Called(channelId, timestamp, userId)
+
+	var r0 int
+	if rf, ok := ret.Get(0).(func(string, int64, string) int); ok {
+		r0 = rf(channelId, timestamp, userId)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	var r1 *model.AppError
+	if rf, ok := ret.Get(1).(func(string, int64, string) *model.AppError); ok {
+		r1 = rf(channelId, timestamp, userId)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*model.AppError)
+		}
+	}
+
+	return r0, r1
+}
+
 // CreateDirectChannel provides a mock function with given fields: userId, otherUserId
 func (_m *ChannelStore) CreateDirectChannel(userId *model.User, otherUserId *model.User) (*model.Channel, *model.AppError) {
 	ret := _m.Called(userId, otherUserId)
@@ -596,13 +619,13 @@ func (_m *ChannelStore) GetChannelsBatchForIndexing(startTime int64, endTime int
 	return r0, r1
 }
 
-// GetChannelsByIds provides a mock function with given fields: channelIds
-func (_m *ChannelStore) GetChannelsByIds(channelIds []string) ([]*model.Channel, *model.AppError) {
-	ret := _m.Called(channelIds)
+// GetChannelsByIds provides a mock function with given fields: channelIds, includeDeleted
+func (_m *ChannelStore) GetChannelsByIds(channelIds []string, includeDeleted bool) ([]*model.Channel, *model.AppError) {
+	ret := _m.Called(channelIds, includeDeleted)
 
 	var r0 []*model.Channel
-	if rf, ok := ret.Get(0).(func([]string) []*model.Channel); ok {
-		r0 = rf(channelIds)
+	if rf, ok := ret.Get(0).(func([]string, bool) []*model.Channel); ok {
+		r0 = rf(channelIds, includeDeleted)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*model.Channel)
@@ -610,8 +633,8 @@ func (_m *ChannelStore) GetChannelsByIds(channelIds []string) ([]*model.Channel,
 	}
 
 	var r1 *model.AppError
-	if rf, ok := ret.Get(1).(func([]string) *model.AppError); ok {
-		r1 = rf(channelIds)
+	if rf, ok := ret.Get(1).(func([]string, bool) *model.AppError); ok {
+		r1 = rf(channelIds, includeDeleted)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*model.AppError)
@@ -769,20 +792,6 @@ func (_m *ChannelStore) GetGuestCount(channelId string, allowFromCache bool) (in
 	return r0, r1
 }
 
-// GetGuestCountFromCache provides a mock function with given fields: channelId
-func (_m *ChannelStore) GetGuestCountFromCache(channelId string) int64 {
-	ret := _m.Called(channelId)
-
-	var r0 int64
-	if rf, ok := ret.Get(0).(func(string) int64); ok {
-		r0 = rf(channelId)
-	} else {
-		r0 = ret.Get(0).(int64)
-	}
-
-	return r0
-}
-
 // GetMember provides a mock function with given fields: channelId, userId
 func (_m *ChannelStore) GetMember(channelId string, userId string) (*model.ChannelMember, *model.AppError) {
 	ret := _m.Called(channelId, userId)
@@ -843,6 +852,31 @@ func (_m *ChannelStore) GetMemberCountFromCache(channelId string) int64 {
 	}
 
 	return r0
+}
+
+// GetMemberCountsByGroup provides a mock function with given fields: channelID, includeTimezones
+func (_m *ChannelStore) GetMemberCountsByGroup(channelID string, includeTimezones bool) ([]*model.ChannelMemberCountByGroup, *model.AppError) {
+	ret := _m.Called(channelID, includeTimezones)
+
+	var r0 []*model.ChannelMemberCountByGroup
+	if rf, ok := ret.Get(0).(func(string, bool) []*model.ChannelMemberCountByGroup); ok {
+		r0 = rf(channelID, includeTimezones)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*model.ChannelMemberCountByGroup)
+		}
+	}
+
+	var r1 *model.AppError
+	if rf, ok := ret.Get(1).(func(string, bool) *model.AppError); ok {
+		r1 = rf(channelID, includeTimezones)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*model.AppError)
+		}
+	}
+
+	return r0, r1
 }
 
 // GetMemberForPost provides a mock function with given fields: postId, userId
@@ -1118,6 +1152,29 @@ func (_m *ChannelStore) GetTeamChannels(teamId string) (*model.ChannelList, *mod
 	return r0, r1
 }
 
+// GroupSyncedChannelCount provides a mock function with given fields:
+func (_m *ChannelStore) GroupSyncedChannelCount() (int64, *model.AppError) {
+	ret := _m.Called()
+
+	var r0 int64
+	if rf, ok := ret.Get(0).(func() int64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(int64)
+	}
+
+	var r1 *model.AppError
+	if rf, ok := ret.Get(1).(func() *model.AppError); ok {
+		r1 = rf()
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*model.AppError)
+		}
+	}
+
+	return r0, r1
+}
+
 // IncrementMentionCount provides a mock function with given fields: channelId, userId
 func (_m *ChannelStore) IncrementMentionCount(channelId string, userId string) *model.AppError {
 	ret := _m.Called(channelId, userId)
@@ -1318,6 +1375,22 @@ func (_m *ChannelStore) RemoveMember(channelId string, userId string) *model.App
 	return r0
 }
 
+// RemoveMembers provides a mock function with given fields: channelId, userIds
+func (_m *ChannelStore) RemoveMembers(channelId string, userIds []string) *model.AppError {
+	ret := _m.Called(channelId, userIds)
+
+	var r0 *model.AppError
+	if rf, ok := ret.Get(0).(func(string, []string) *model.AppError); ok {
+		r0 = rf(channelId, userIds)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.AppError)
+		}
+	}
+
+	return r0
+}
+
 // ResetAllChannelSchemes provides a mock function with given fields:
 func (_m *ChannelStore) ResetAllChannelSchemes() *model.AppError {
 	ret := _m.Called()
@@ -1416,6 +1489,31 @@ func (_m *ChannelStore) SaveMember(member *model.ChannelMember) (*model.ChannelM
 	var r1 *model.AppError
 	if rf, ok := ret.Get(1).(func(*model.ChannelMember) *model.AppError); ok {
 		r1 = rf(member)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*model.AppError)
+		}
+	}
+
+	return r0, r1
+}
+
+// SaveMultipleMembers provides a mock function with given fields: members
+func (_m *ChannelStore) SaveMultipleMembers(members []*model.ChannelMember) ([]*model.ChannelMember, *model.AppError) {
+	ret := _m.Called(members)
+
+	var r0 []*model.ChannelMember
+	if rf, ok := ret.Get(0).(func([]*model.ChannelMember) []*model.ChannelMember); ok {
+		r0 = rf(members)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*model.ChannelMember)
+		}
+	}
+
+	var r1 *model.AppError
+	if rf, ok := ret.Get(1).(func([]*model.ChannelMember) *model.AppError); ok {
+		r1 = rf(members)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*model.AppError)
@@ -1689,6 +1787,47 @@ func (_m *ChannelStore) UpdateMember(member *model.ChannelMember) (*model.Channe
 	var r1 *model.AppError
 	if rf, ok := ret.Get(1).(func(*model.ChannelMember) *model.AppError); ok {
 		r1 = rf(member)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*model.AppError)
+		}
+	}
+
+	return r0, r1
+}
+
+// UpdateMembersRole provides a mock function with given fields: channelID, userIDs
+func (_m *ChannelStore) UpdateMembersRole(channelID string, userIDs []string) *model.AppError {
+	ret := _m.Called(channelID, userIDs)
+
+	var r0 *model.AppError
+	if rf, ok := ret.Get(0).(func(string, []string) *model.AppError); ok {
+		r0 = rf(channelID, userIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*model.AppError)
+		}
+	}
+
+	return r0
+}
+
+// UpdateMultipleMembers provides a mock function with given fields: members
+func (_m *ChannelStore) UpdateMultipleMembers(members []*model.ChannelMember) ([]*model.ChannelMember, *model.AppError) {
+	ret := _m.Called(members)
+
+	var r0 []*model.ChannelMember
+	if rf, ok := ret.Get(0).(func([]*model.ChannelMember) []*model.ChannelMember); ok {
+		r0 = rf(members)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*model.ChannelMember)
+		}
+	}
+
+	var r1 *model.AppError
+	if rf, ok := ret.Get(1).(func([]*model.ChannelMember) *model.AppError); ok {
+		r1 = rf(members)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*model.AppError)

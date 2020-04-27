@@ -1,5 +1,5 @@
-// Copyright (c) 2017-present Mattermost, Inc. All Rights Reserved.
-// See License.txt for license information.
+// Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
+// See LICENSE.txt for license information.
 
 package localcachelayer
 
@@ -70,6 +70,7 @@ func (s LocalCacheTeamStore) Update(team *model.Team) (*model.Team, *model.AppEr
 	if err != nil {
 		return nil, err
 	}
+	defer s.rootStore.doClearCacheCluster(s.rootStore.rolePermissionsCache)
 
 	if oldTeam != nil && oldTeam.DeleteAt == 0 {
 		s.rootStore.doClearCacheCluster(s.rootStore.teamAllTeamIdsForUserCache)

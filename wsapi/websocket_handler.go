@@ -4,7 +4,6 @@
 package wsapi
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/mattermost/mattermost-server/v5/app"
@@ -23,15 +22,25 @@ type webSocketHandler struct {
 }
 
 func (wh webSocketHandler) ServeWebSocket(conn *app.WebConn, r *model.WebSocketRequest) {
-	mlog.Debug(fmt.Sprintf("websocket: %s", r.Action))
+	mlog.Debug("Websocket request", mlog.String("action", r.Action))
 
+	hub := wh.app.GetHubForUserId(conn.UserId)
+	if hub == nil {
+		return
+	}
 	session, sessionErr := wh.app.GetSession(conn.GetSessionToken())
 	if sessionErr != nil {
-		mlog.Error(fmt.Sprintf("%v:%v seq=%v uid=%v %v [details: %v]", "websocket", r.Action, r.Seq, conn.UserId, sessionErr.SystemMessage(utils.T), sessionErr.Error()))
+		mlog.Error(
+			"websocket session error",
+			mlog.String("action", r.Action),
+			mlog.Int64("seq", r.Seq),
+			mlog.String("user_id", conn.UserId),
+			mlog.String("error_message", sessionErr.SystemMessage(utils.T)),
+			mlog.Err(sessionErr),
+		)
 		sessionErr.DetailedError = ""
 		errResp := model.NewWebSocketError(r.Seq, sessionErr)
-
-		conn.Send <- errResp
+		hub.SendMessage(conn, errResp)
 		return
 	}
 
@@ -43,17 +52,22 @@ func (wh webSocketHandler) ServeWebSocket(conn *app.WebConn, r *model.WebSocketR
 	var err *model.AppError
 
 	if data, err = wh.handlerFunc(r); err != nil {
-		mlog.Error(fmt.Sprintf("%v:%v seq=%v uid=%v %v [details: %v]", "websocket", r.Action, r.Seq, r.Session.UserId, err.SystemMessage(utils.T), err.DetailedError))
+		mlog.Error(
+			"websocket request handling error",
+			mlog.String("action", r.Action),
+			mlog.Int64("seq", r.Seq),
+			mlog.String("user_id", conn.UserId),
+			mlog.String("error_message", err.SystemMessage(utils.T)),
+			mlog.Err(err),
+		)
 		err.DetailedError = ""
 		errResp := model.NewWebSocketError(r.Seq, err)
-
-		conn.Send <- errResp
+		hub.SendMessage(conn, errResp)
 		return
 	}
 
 	resp := model.NewWebSocketResponse(model.STATUS_OK, r.Seq, data)
-
-	conn.Send <- resp
+	hub.SendMessage(conn, resp)
 }
 
 func NewInvalidWebSocketParamError(action string, name string) *model.AppError {

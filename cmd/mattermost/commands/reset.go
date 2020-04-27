@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/mattermost/mattermost-server/v5/audit"
 	"github.com/spf13/cobra"
 )
 
@@ -46,8 +47,11 @@ func resetCmdF(command *cobra.Command, args []string) error {
 		}
 	}
 
-	a.Srv.Store.DropAllTables()
+	a.Srv().Store.DropAllTables()
 	CommandPrettyPrintln("Database successfully reset")
+
+	auditRec := a.MakeAuditRecord("reset", audit.Success)
+	a.LogAuditRec(auditRec, nil)
 
 	return nil
 }
